@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>世界史时间轴 · 国际体系演变（1500–2026）</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --ink: #c9d1d9;
+    --muted: #8b949e;
+    --axis: #30363d;
+    --axis-dot: #58a6ff;
+    --pol: #2ecc71;
+    --econ: #3498db;
+    --culture: #f39c12;
+    --colony: #e74c3c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    overflow: hidden; /* 锁死纵向滚动，全屏沉浸 */
+  }
+
+  .header {
+    text-align: center;
+    padding: 0.8rem 1rem 0.4rem;
+    background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+    border-bottom: 1px solid var(--axis);
+  }
+  .header h1 {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 0.1rem;
+  }
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 1.2rem;
+    margin-top: 0.3rem;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+  }
+
+  .control-panel {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--axis);
+    padding: 0.4rem 1rem;
+  }
+  .filter-bar, .minimap-bar {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0;
+  }
+  
+  .filter-btn, .mini-nav-btn {
+    background: transparent;
+    border: 1px solid var(--axis);
+    color: var(--muted);
+    padding: 5px 14px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover, .mini-nav-btn:hover { border-color: var(--ink); color: var(--ink); }
+  .filter-btn.active { color: #fff; border-color: transparent; }
+  .filter-btn.active[data-cat="all"] { background: #555; }
+  .filter-btn.active[data-cat="pol"] { background: var(--pol); }
+  .filter-btn.active[data-cat="econ"] { background: var(--econ); }
+  .filter-btn.active[data-cat="culture"] { background: var(--culture); }
+  .filter-btn.active[data-cat="colony"] { background: var(--colony); }
+
+  .timeline-wrapper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* 🛠️ 核心修正：自适应屏幕高度，防止上下需要滚动 */
+    height: calc(100vh - 150px);
+    background: var(--bg);
+    cursor: grab;
+    position: relative;
+  }
+  .timeline-wrapper:active { cursor: grabbing; }
+  .timeline-wrapper::-webkit-scrollbar { height: 8px; }
+  .timeline-wrapper::-webkit-scrollbar-track { background: var(--bg); }
+  .timeline-wrapper::-webkit-scrollbar-thumb { background: var(--axis); border-radius: 4px; }
+
+  .timeline {
+    position: relative;
+    width: 11000px;
+    height: 100%; /* 满高 */
+    margin: 0 auto;
+    user-select: none;
+  }
+
+  .era-band {
+    position: absolute;
+    height: 100%;
+    top: 0;
+    z-index: 0;
+    border-right: 1px dashed rgba(48, 54, 61, 0.3);
+  }
+  .era-label {
+    position: absolute;
+    top: 6px;
+    height: 24px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    z-index: 1;
+    white-space: nowrap;
+    padding: 0 10px;
+  }
+
+  .main-axis {
+    position: absolute;
+    left: 80px;
+    right: 80px;
+    top: 50%; /* 🛠️ 核心修正：主轴永远锁定在屏幕垂直正中央 */
+    height: 2px;
+    background: var(--axis);
+    z-index: 2;
+  }
+
+  .year-marker {
+    position: absolute;
+    top: calc(50% - 10px);
+    transform: translateX(-50%);
+    z-index: 3;
+    text-align: center;
+  }
+  .year-marker .tick {
+    width: 1px;
+    height: 20px;
+    background: var(--axis);
+    margin: 0 auto;
+  }
+  .year-marker.major .tick { height: 24px; width: 1.5px; background: #666; }
+  .year-marker .label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .year-marker.major .label { color: var(--ink); font-weight: 700; }
+
+  .event-card {
+    position: absolute;
+    z-index: 5;
+    cursor: pointer;
+    transition: transform 0.12s, opacity 0.15s;
+  }
+  .event-card:hover {
+    transform: translateX(-50%) scale(1.05) !important;
+    z-index: 20;
+  }
+  .event-card.hidden {
+    opacity: 0.05;
+    pointer-events: none;
+  }
+
+  .card-body {
+    background: var(--bg-card);
+    border-radius: 3px;
+    padding: 4px 6px;
+    width: 145px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    border: 1px solid rgba(48,54,61,0.8);
+  }
+
+  .card-year { font-size: 0.6rem; font-weight: 700; line-height: 1; }
+  .card-title {
+    font-size: 0.68rem;
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .event-card.pol .card-body { border-left: 3px solid var(--pol); }
+  .event-card.pol .card-year { color: var(--pol); }
+  .event-card.econ .card-body { border-left: 3px solid var(--econ); }
+  .event-card.econ .card-year { color: var(--econ); }
+  .event-card.culture .card-body { border-left: 3px solid var(--culture); }
+  .event-card.culture .card-year { color: var(--culture); }
+  .event-card.colony .card-body { border-left: 3px solid var(--colony); }
+  .event-card.colony .card-year { color: var(--colony); }
+
+  .connector {
+    position: absolute;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+    z-index: 3;
+  }
+  .axis-dot {
+    position: absolute;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+  }
+
+  .tooltip {
+    position: fixed;
+    background: #1c2128;
+    border: 1px solid var(--axis);
+    border-radius: 6px;
+    padding: 10px 14px;
+    max-width: 320px;
+    z-index: 100;
+    pointer-events: none;
+    opacity: 0;
+    display: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  }
+  .tooltip.visible { opacity: 1; display: block; }
+  .tooltip .tt-cat { display: inline-block; font-size: 0.65rem; font-weight: 700; color: #fff; padding: 1px 5px; border-radius: 2px; margin-bottom: 4px; }
+  .tooltip .tt-year { font-size: 0.7rem; color: var(--muted); }
+  .tooltip .tt-title { font-size: 0.88rem; font-weight: 700; margin: 3px 0; color: #fff; }
+  .tooltip .tt-desc { font-size: 0.82rem; color: #adbac7; line-height: 1.45; }
+  .tooltip.pol .tt-cat { background: var(--pol); }
+  .tooltip.econ .tt-cat { background: var(--econ); }
+  .tooltip.culture .tt-cat { background: var(--culture); }
+  .tooltip.colony .tt-cat { background: var(--colony); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>世界史时间轴 · 国际体系演变（1500–2026）</h1>
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:var(--pol)"></span>政治</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--econ)"></span>经济</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--culture)"></span>文化</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--colony)"></span>殖民/国际关系</div>
+  </div>
+</div>
+
+<div class="control-panel">
+  <div class="filter-bar">
+    <button class="filter-btn active" data-cat="all">全部维度</button>
+    <button class="filter-btn" data-cat="pol">政治</button>
+    <button class="filter-btn" data-cat="econ">经济</button>
+    <button class="filter-btn" data-cat="culture">文化</button>
+    <button class="filter-btn" data-cat="colony">殖民/国关</button>
+  </div>
+  <div class="minimap-bar" id="minimapBar"></div>
+</div>
+
+<div class="timeline-wrapper" id="timelineWrapper">
+  <div class="timeline" id="timeline">
+    <div class="main-axis"></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip">
+  <div class="tt-cat" id="ttCat"></div>
+  <div class="tt-year" id="ttYear"></div>
+  <div class="tt-title" id="ttTitle"></div>
+  <div class="tt-desc" id="ttDesc"></div>
+</div>
+
+<script>
+// ==================== 数据直接注入 ====================
+window.erasData = [
+  { name: '威斯特伐利亚体系', start: 1500, end: 1815, color: '#e74c3c' },
+  { name: '维也纳体系', start: 1815, end: 1914, color: '#2980b9' },
+  { name: '凡尔赛-华盛顿体系', start: 1919, end: 1939, color: '#f1c40f' },
+  { name: '雅尔塔体系', start: 1945, end: 1991, color: '#27ae60' },
+  { name: '后雅尔塔时代', start: 1991, end: 2026, color: '#9b59b6' }
+];
+
+window.historyEvents = [
+  [1517, '马丁·路德发表《九十五条论纲》', '宗教改革开启，动摇天主教会精神垄断', 'pol'],
+  [1524, '德意志农民战争', '宗教改革的激进表现，闵采尔领导', 'pol'],
+  [1534, '英国国会通过《至尊法案》', '英王亨利八世确立"国王为教会首脑"', 'pol'],
+  [1555, '奥格斯堡宗教和约', '"教随国定"原则，承认路德宗合法地位', 'pol'],
+  [1618, '三十年战争爆发', '欧洲天主教与新教国家混战', 'pol'],
+  [1640, '英国长期议会召开', '英国资产阶级革命开始', 'pol'],
+  [1648, '《威斯特伐利亚和约》签订', '确立主权国家原则，近代国际关系体系起点', 'pol'],
+  [1649, '英王查理一世被处死', '英国短暂进入共和时期', 'pol'],
+  [1688, '英国光荣革命', '不流血政变，确立议会主主权原则', 'pol'],
+  [1689, '英国颁布《权利法案》', '君主立宪制正式确立', 'pol'],
+  [1701, '普鲁士王国正式建立', '德意志地区军事强国崛起', 'pol'],
+  [1740, '腓特烈大帝即位，开明专制', '普鲁士推行"开明专制"改革', 'pol'],
+  [1762, '叶卡捷琳娜二世即位', '俄国推行"开明专制"，领土大幅扩张', 'pol'],
+  [1775, '美国独立战争爆发', '来克星顿枪声，北美独立运动开始', 'pol'],
+  [1776, '美国发表《独立宣言》', '宣告"人人生而平等"，天赋人权思想', 'pol'],
+  [1783, '《巴黎条约》签订', '美国正式独立，英国承认', 'pol'],
+  [1787, '美国制定联邦宪法', '确立三权分立的联邦共和制', 'pol'],
+  [1789, '法国大革命爆发', '攻占巴士底狱，颁布《人权宣言》', 'pol'],
+  [1791, '法国颁布1791年宪法', '法国成为君主立宪制国家', 'pol'],
+  [1792, '法兰西第一共和国成立', '废除君主制，处死路易十六', 'pol'],
+  [1804, '拿破仑称帝，颁布《拿破仑法典》', '法典确立资本主义私有财产原则', 'pol'],
+  [1806, '神圣罗马帝国解体', '千年帝国终结，德意志重构开始', 'pol'],
+  [1813, '莱比锡战役（民族大会战）', '反法同盟击败拿破仑', 'pol'],
+  [1815, '滑铁卢战役；维也纳会议召开', '拿破仑战败，维也纳体系形成', 'pol'],
+  [1500, '新航路开辟', '各大洲连通，世界市场雏形出现', 'econ'],
+  [1532, '西班牙征服印加帝国', '美洲金银大量流入欧洲', 'econ'],
+  [1565, '英国大规模开展圈地运动', '为工业革命提供自由劳动力', 'econ'],
+  [1600, '英国东印度公司成立', '特许贸易公司制度，殖民经济扩张', 'econ'],
+  [1602, '荷兰东印度公司成立', '第一个股份制公司，垄断东方贸易', 'econ'],
+  [1651, '英国颁布《航海条例》', '限制荷兰航运，争夺海上贸易霸权', 'econ'],
+  [1680, '西欧重商主义与三角贸易兴盛', '国家鼓励出口，黑奴贸易积累原始资本', 'econ'],
+  [1765, '哈格里夫斯发明珍妮纺纱机', '第一次工业革命正式开端', 'econ'],
+  [1785, '瓦特改良蒸汽机投入使用', '工业革命关键动力突破', 'econ'],
+  [1807, '富尔顿发明汽船', '水上交通革命开始', 'econ'],
+  [1350, '文艺复兴运动兴起', '人文主义思潮兴起，从意大利扩散至全欧', 'culture'],
+  [1543, '哥白尼发表《天体运行论》', '日心说提出，科学革命开端', 'culture'],
+  [1600, '莎士比亚创作黄金期', '人文主义文学巅峰', 'culture'],
+  [1637, '笛卡尔发表《方法论》', '理性主义哲学奠基', 'culture'],
+  [1687, '牛顿出版《自然哲学的数学原理》', '经典力学体系建立，近代科学成熟', 'culture'],
+  [1690, '洛克发表《政府论》', '提出天赋人权、社会契约论', 'culture'],
+  [1748, '孟德斯鸠发表《论法的精神》', '提出三权分立学说', 'culture'],
+  [1762, '卢梭发表《社会契约论》', '提出主权在民思想', 'culture'],
+  [1776, '亚当·斯密发表《国富论》', '自由主义经济学奠基', 'culture'],
+  [1492, '哥伦布发现美洲', '新旧大陆首次连通，大航海时代开端', 'colony'],
+  [1498, '达·伽马到达印度', '开辟欧洲至亚洲新航路', 'colony'],
+  [1519, '麦哲伦船队环球航行', '首次环球航行，证明地圆说', 'colony'],
+  [1588, '英国击败西班牙无敌舰队', '英国海上霸权崛起', 'colony'],
+  [1600, '荷兰建立殖民帝国', '"海上马车夫"称霸全球贸易', 'colony'],
+  [1652, '英荷战争爆发', '三次英荷战争，英国夺取贸易霸权', 'colony'],
+  [1763, '七年战争结束', '英国夺取法国在北美和印度的殖民地', 'colony'],
+  [1789, '法国大革命引发欧洲战争', '反法同盟多次干涉法国', 'colony'],
+  [1815, '维也纳会议召开', '梅特涅主导，恢复欧洲封建旧秩序', 'pol'],
+  [1823, '美国发表《门罗宣言》', '"美洲是美洲人的美洲"，排斥欧洲干涉', 'pol'],
+  [1830, '法国七月革命', '推翻波旁复辟王朝，建立七月王朝', 'pol'],
+  [1832, '英国第一次议会改革', '工业资产阶级获得更多选举权', 'pol'],
+  [1848, '欧洲革命浪潮', '各国资产阶级民主民族运动高涨', 'pol'],
+  [1861, '俄国废除农奴制改革', '亚历山大二世改革，走上资本主义道路', 'pol'],
+  [1861, '美国南北战争爆发', '维护联邦统一，废除奴隶制', 'pol'],
+  [1865, '美国南北战争结束', '联邦胜利，资本主义统一市场形成', 'pol'],
+  [1868, '日本明治维新开始', '"殖产兴业""文明开化""富国强兵"', 'pol'],
+  [1870, '意大利完成统一', '加里波第和加富尔推动民族统一', 'pol'],
+  [1871, '德意志统一；巴黎公社', '俾斯麦完成统一；巴黎公社是无产阶级政权首次尝试', 'pol'],
+  [1875, '法国通过第三共和国宪法', '法国共和制度最终确立', 'pol'],
+  [1889, '日本颁布《大日本帝国宪法》', '确立君主立宪制（天皇主权）', 'pol'],
+  [1911, '中国辛亥革命', '推翻清朝专制，建立亚洲第一个共和国', 'pol'],
+  [1914, '第一次世界大战爆发', '萨拉热窝事件，维也纳体系崩溃', 'pol'],
+  [1825, '英国爆发第一次经济危机', '资本主义周期性经济危机开始', 'econ'],
+  [1850, '第一次工业革命在欧美完成', '"蒸汽时代"全面到来', 'econ'],
+  [1851, '伦敦世博会', '展示工业革命成果，英国"世界工厂"', 'econ'],
+  [1869, '苏伊士运河通航', '缩短欧亚航运距离，全球贸易加速', 'econ'],
+  [1870, '第二次工业革命开启', '电力、内燃机、化工，美德领先', 'econ'],
+  [1876, '贝尔发明电话', '第二次工业革命标志性发明', 'econ'],
+  [1886, '汽车诞生（奔驰）', '内燃机驱动的交通工具革命', 'econ'],
+  [1895, '世界殖民体系最终形成', '资本主义世界市场完全确立', 'econ'],
+  [1903, '莱特兄弟首次飞行', '航空时代开端', 'econ'],
+  [1818, '马克思诞生', '科学社会主义创始人', 'culture'],
+  [1848, '《共产党宣言》发表', '马克思主义诞生', 'culture'],
+  [1859, '达尔文《物种起源》出版', '进化论问世，冲击神学世界观', 'culture'],
+  [1867, '马克思《资本论》第一卷出版', '剩余价值学说系统阐述', 'culture'],
+  [1875, '三大思潮并行发展', '自由主义、民族主义、科学社会主义', 'culture'],
+  [1895, '电影诞生', '大众文化新载体', 'culture'],
+  [1900, '物理学革命', '相对论与量子力学开启现代科学', 'culture'],
+  [1815, '维也纳体系下的"欧洲协调"', '大国定期会议维持均势', 'colony'],
+  [1840, '鸦片战争爆发', '中国被卷入资本主义世界市场', 'colony'],
+  [1856, '第二次鸦片战争', '列强进一步侵华', 'colony'],
+  [1884, '柏林会议召开', '列强瓜分非洲的规则制定', 'colony'],
+  [1894, '甲午中日战争', '日本侵华，签订《马关条约》', 'colony'],
+  [1898, '美西战争', '美国夺取菲律宾、波多黎各、关岛', 'colony'],
+  [1900, '八国联军侵华', '《辛丑条约》签订，中国完全半殖民地化', 'colony'],
+  [1904, '日俄战争', '日本击败俄国，争夺中国东北', 'colony'],
+  [1917, '俄国十月革命胜利', '建立世界上第一个社会主义国家', 'pol'],
+  [1918, '第一次世界大战结束', '同盟国投降，德国十一月革命', 'pol'],
+  [1919, '巴黎和会召开', '凡尔赛体系建立；中国五四运动爆发', 'pol'],
+  [1919, '德国魏玛共和国成立', '德国短暂民主实验', 'pol'],
+  [1921, '华盛顿会议召开', '凡尔赛—华盛顿体系完整成型', 'pol'],
+  [1922, '苏联成立', '苏维埃社会主义共和国联盟建立', 'pol'],
+  [1924, '列宁逝世，斯大林掌权', '苏联进入斯大林模式时期', 'pol'],
+  [1928, '苏联推行第一个五年计划', '优先发展重工业，农业集体化', 'pol'],
+  [1933, '希特勒上台', '德国建立纳粹独裁统治', 'pol'],
+  [1936, '苏联通过新宪法', '宣布建成"社会主义国家"', 'pol'],
+  [1936, '西班牙内战爆发', '国际纵队支援共和国', 'pol'],
+  [1937, '日本全面侵华', '七七事变，中国全面抗战开始', 'pol'],
+  [1938, '慕尼黑协定签订', '英法绥靖政策顶峰', 'pol'],
+  [1939, '德国突袭波兰', '二战全面爆发，凡华体系崩溃', 'pol'],
+  [1924, '道威斯计划实施', '德国经济恢复，赔款问题缓解', 'econ'],
+  [1926, '资本主义相对稳定繁荣', '1924–1929年短暂"黄金时代"', 'econ'],
+  [1929, '纽约股市崩盘', '大萧条开始', 'econ'],
+  [1931, '世界性经济大危机', '1929–1933年大萧条席卷全球', 'econ'],
+  [1933, '美国推行罗斯福新政', '国家干预经济新模式', 'econ'],
+  [1933, '德国推行国民经济军事化', '为战争做准备的经济政策', 'econ'],
+  [1915, '相对论广泛应用', '爱因斯坦广义相对论深刻影响科学界', 'culture'],
+  [1920, '现代主义文学、美术兴起', '意识流、表现主义等新流派', 'culture'],
+  [1925, '量子力学基本建立', '海森堡、薛定谔等奠定现代物理学', 'culture'],
+  [1930, '法西斯极端民族主义扩张', '极端思想在德意日泛滥', 'culture'],
+  [1935, '左翼社会主义思潮传播', '反法西斯文化运动', 'culture'],
+  [1919, '凡尔赛和约签订', '德国领土割让、赔款、军备限制', 'colony'],
+  [1922, '土耳其凯末尔革命成功', '奥斯曼帝国终结，土耳其共和国成立', 'colony'],
+  [1928, '《非战公约》签订', '各国谴责以战争解决国际争端', 'colony'],
+  [1931, '日本发动九一八事变', '侵占中国东北，破坏华盛顿体系', 'colony'],
+  [1935, '意大利入侵埃塞俄比亚', '国联制裁无力，绥靖政策开始', 'colony'],
+  [1938, '德国吞并奥地利', '凡尔赛体系进一步瓦解', 'colony'],
+  [1945, '雅尔塔会议召开', '划分美苏势力范围，两极格局基础', 'pol'],
+  [1945, '联合国正式成立', '维护国际和平与安全的核心机构', 'pol'],
+  [1947, '杜鲁门主义出台', '冷战正式开始', 'pol'],
+  [1947, '印度独立与印巴分治', '英国殖民体系瓦解开端', 'pol'],
+  [1948, '以色列建国', '第一次中东战争爆发', 'pol'],
+  [1949, '北约成立', '西方军事同盟建立', 'pol'],
+  [1949, '中华人民共和国成立', '新中国诞生，社会主义阵营扩大', 'pol'],
+  [1950, '朝鲜战争爆发', '冷战首次热战', 'pol'],
+  [1955, '华约成立', '两极格局完全定型', 'pol'],
+  [1956, '苏共二十大召开', '赫鲁晓夫批判斯大林，推动改革', 'pol'],
+  [1956, '埃及收回苏伊士运河', '第二次中东战争，殖民体系加速瓦解', 'pol'],
+  [1959, '古巴革命胜利', '拉美第一个社会主义国家', 'pol'],
+  [1961, '不结盟运动正式形成', '第三世界国家独立于两极之外', 'pol'],
+  [1962, '古巴导弹危机', '冷战最危险时刻，美苏妥协', 'pol'],
+  [1964, '勃列日涅夫上台', '苏联进入停滞时期', 'pol'],
+  [1972, '尼克松访华', '中美关系正常化开始', 'pol'],
+  [1978, '中国改革开放', '邓小平主导，经济体制改革', 'pol'],
+  [1979, '中美正式建交', '中美关系实现正常化', 'pol'],
+  [1985, '戈尔巴乔夫上台改革', '"新思维"外交，苏联走向解体', 'pol'],
+  [1989, '柏林墙倒塌', '东欧剧变，冷战走向终结', 'pol'],
+  [1990, '两德完成统一', '冷战格局标志性事件', 'pol'],
+  [1991, '苏联解体', '雅尔塔体系、两极格局终结', 'pol'],
+  [1944, '布雷顿森林体系建立', 'IMF、世界银行成立，美元中心', 'econ'],
+  [1947, '关贸总协定（GATT）签署', '国际贸易体系制度化', 'econ'],
+  [1950, '西欧经济恢复', '马歇尔计划助力战后重建', 'econ'],
+  [1957, '欧洲经济共同体成立', '欧洲一体化起步', 'econ'],
+  [1960, '日本经济高速增长', '"经济奇迹"，成为世界第二经济体', 'econ'],
+  [1967, '欧洲共同体（EC）成立', '三大共同体合并', 'econ'],
+  [1971, '布雷顿森林体系瓦解', '美元与黄金脱钩', 'econ'],
+  [1973, '第一次石油危机', 'OPEC提价冲击西方经济', 'econ'],
+  [1979, '第二次石油危机', '滞胀困扰西方经济', 'econ'],
+  [1980, '里根经济学/撒切尔主义', '新自由主义经济改革', 'econ'],
+  [1985, '广场协议签订', '日元大幅升值，影响东亚经济格局', 'econ'],
+  [1945, '纽伦堡审判/东京审判', '反法西斯正义审判，确立国际法原则', 'culture'],
+  [1948, '《世界人权宣言》通过', '联合国确立基本人权标准', 'culture'],
+  [1950, '冷战意识形态对抗', '资本主义与社会主义阵营对立', 'culture'],
+  [1960, '"第三次科技革命"', '原子能、计算机、航天技术', 'culture'],
+  [1963, '马丁·路德·金"我有一个梦想"', '美国民权运动高潮', 'culture'],
+  [1969, '阿波罗登月成功', '人类首次登月', 'culture'],
+  [1970, '环保运动兴起', '绿色运动、可持续发展理念', 'culture'],
+  [1980, '个人电脑普及', '信息技术革命改变社会', 'culture'],
+  [1945, '联合国成立', '维护国际和平与安全', 'colony'],
+  [1947, '印巴分治独立', '英属印度解体', 'colony'],
+  [1954, '日内瓦会议', '印度支那停战，越南南北分治', 'colony'],
+  [1955, '万隆会议召开', '亚非会议，不结盟运动先声', 'colony'],
+  [1956, '埃及收回苏伊士运河', '殖民体系加速瓦解', 'colony'],
+  [1960, '"非洲年"——17国独立', '非洲民族解放运动高潮', 'colony'],
+  [1964, '77国集团成立', '发展中国家联合争取经济权益', 'colony'],
+  [1971, '中国恢复联合国合法席位', '中国外交重大突破', 'colony'],
+  [1973, '第四次中东战争', '阿拉伯国家以石油为武器', 'colony'],
+  [1979, '苏联入侵阿富汗', '冷战加剧，国际社会谴责', 'colony'],
+  [1982, '马岛战争', '英国与阿根廷争夺福克兰群岛', 'colony'],
+  [1990, '海湾战争', '联合国授权的多国部队行动', 'colony'],
+  [1991, '苏联解体', '冷战结束，一超多强格局形成', 'pol'],
+  [1993, '欧盟正式成立', '欧洲一体化深化', 'pol'],
+  [1994, '南非废除种族隔离', '曼德拉当选总统', 'pol'],
+  [1999, '北约轰炸南联盟', '科索沃战争，北约首次进攻性行动', 'pol'],
+  [2001, '九一一事件', '美国发动反恐战争', 'pol'],
+  [2003, '伊拉克战争爆发', '美国单边主义行动', 'pol'],
+  [2010, '阿拉伯之春运动', '中东北非多国政局动荡', 'pol'],
+  [2014, '克里米亚危机', '俄乌矛盾激化', 'pol'],
+  [2016, '英国脱欧公投', '欧洲一体化遭遇挫折', 'pol'],
+  [2022, '俄乌冲突全面升级', '二战后欧洲最大规模军事冲突', 'pol'],
+  [1991, '互联网商业化起步', '数字经济时代开启', 'econ'],
+  [1994, '北美自由贸易协定生效', '区域经济一体化', 'econ'],
+  [1995, '世界贸易组织（WTO）成立', '经济全球化加速', 'econ'],
+  [1997, '亚洲金融危机', '东亚经济遭受重创', 'econ'],
+  [1999, '欧元区正式启动', '欧洲统一货币', 'econ'],
+  [2001, '中国加入WTO', '融入全球经济体系', 'econ'],
+  [2008, '全球金融危机', '次贷危机引发全球经济衰退', 'econ'],
+  [2010, '金砖国家合作机制深化', '新兴经济体影响力上升', 'econ'],
+  [2015, '亚投行（AIIB）正式成立', '中国主导的新型多边开发机构', 'econ'],
+  [2020, '新冠疫情冲击全球经济', '供应链断裂，数字经济加速', 'econ'],
+  [1990, '全球化与文化交融', '多元文明碰撞交流', 'culture'],
+  [2000, '新媒体与信息革命', '互联网改变文化传播方式', 'culture'],
+  [2007, '智能手机时代开启', '移动互联网深刻改变生活', 'culture'],
+  [2016, '人工智能快速发展', '深度学习、大数据技术突破', 'culture'],
+  [2023, '生成式AI爆发', 'ChatGPT等大语言模型引发变革', 'culture'],
+  [1993, '欧盟正式成立', '欧洲政治一体化深化', 'colony'],
+  [1995, '世界贸易组织成立', '全球贸易规则制度化', 'colony'],
+  [2001, '上海合作组织成立', '新型区域合作组织', 'colony'],
+  [2013, '中国提出"一带一路"倡议', '新型国际合作模式', 'colony'],
+  [2015, '巴黎气候协定签署', '全球气候治理里程碑', 'colony'],
+  [2017, '北约持续东扩', '多极化趋势与大国博弈', 'colony']
+];
+
+// ==================== 渲染与交互 ====================
+const TIMELINE_START = 1500;
+const TIMELINE_END = 2026;
+const PX_LEFT = 100;
+const PX_RIGHT = 10800;
+const LAYER_HEIGHT = 36;
+
+const timeline = document.getElementById('timeline');
+const wrapper = document.getElementById('timelineWrapper');
+const tooltip = document.getElementById('tooltip');
+const minimapBar = document.getElementById('minimapBar');
+const catNames = { pol: '政治', econ: '经济', culture: '文化', colony: '殖民/国际关系' };
+
+function yearToX(year) {
+  return PX_LEFT + (year - TIMELINE_START) / (TIMELINE_END - TIMELINE_START) * (PX_RIGHT - PX_LEFT);
+}
+
+// 获取实时的中心轴 Y 轴坐标（基于弹性视口）
+function getAxisY() {
+  return timeline.offsetHeight / 2;
+}
+
+window.erasData.forEach(era => {
+  const band = document.createElement('div');
+  band.className = 'era-band';
+  band.style.left = yearToX(era.start) + 'px';
+  band.style.width = (yearToX(era.end) - yearToX(era.start)) + 'px';
+  band.style.background = `rgba(${hexToRgb(era.color)},0.04)`;
+  timeline.appendChild(band);
+
+  const label = document.createElement('div');
+  label.className = 'era-label';
+  label.style.left = yearToX(era.start) + 'px';
+  label.style.width = (yearToX(era.end) - yearToX(era.start)) + 'px';
+  label.style.background = `rgba(${hexToRgb(era.color)},0.65)`;
+  label.textContent = era.name;
+  timeline.appendChild(label);
+
+  const navBtn = document.createElement('button');
+  navBtn.className = 'mini-nav-btn';
+  navBtn.style.borderLeft = `3px solid ${era.color}`;
+  navBtn.textContent = era.name;
+  navBtn.addEventListener('click', () => {
+    const targetX = yearToX(era.start) - 150;
+    wrapper.scrollTo({ left: targetX, behavior: 'smooth' });
+  });
+  minimapBar.appendChild(navBtn);
+});
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+for (let y = 1500; y <= 2026; y += 25) {
+  const marker = document.createElement('div');
+  marker.className = 'year-marker' + (y % 100 === 0 ? ' major' : '');
+  marker.style.left = yearToX(y) + 'px';
+  marker.innerHTML = `<div class="tick"></div><div class="label">${y}</div>`;
+  timeline.appendChild(marker);
+}
+
+function placeEvents(eventList, isAbove) {
+  const placed = [];
+  const axisY = getAxisY();
+
+  eventList.forEach((evt) => {
+    const [year, title, desc, cat] = evt;
+    const x = yearToX(year);
+
+    let layer = 0;
+    let found = false;
+    while (!found && layer < 45) {
+      found = true;
+      const testY = isAbove
+        ? axisY - 15 - (layer + 1) * LAYER_HEIGHT
+        : axisY + 15 + layer * LAYER_HEIGHT;
+
+      for (const p of placed) {
+        const overlapX = Math.abs(p.x - x) < 165; // CARD_WIDTH + GAP
+        const overlapY = Math.abs(p.y - testY) < LAYER_HEIGHT;
+        if (overlapX && overlapY) {
+          found = false;
+          layer++;
+          break;
+        }
+      }
+    }
+
+    const y = isAbove
+      ? axisY - 15 - (layer + 1) * LAYER_HEIGHT
+      : axisY + 15 + layer * LAYER_HEIGHT;
+
+    const card = document.createElement('div');
+    card.className = `event-card ${cat}`;
+    card.dataset.cat = cat;
+    card.style.left = x + 'px';
+    card.style.top = y + 'px';
+    card.style.transform = 'translateX(-50%)';
+
+    const cardHeight = 24; 
+    if (isAbove) {
+      const connectorH = Math.abs(axisY - (y + cardHeight));
+      card.innerHTML = `
+        <div class="card-body">
+          <div class="card-year">${year} <span style="font-weight:normal;color:var(--muted)">${catNames[cat].slice(0,2)}</span></div>
+          <div class="card-title">${title}</div>
+        </div>
+        <div class="connector" style="top: 100%; height: ${connectorH}px; border-left: 1px dotted var(--${cat}); opacity: 0.4;"></div>
+        <div class="axis-dot" style="bottom: -${connectorH + 2.5}px; background: var(--${cat});"></div>
+      `;
+    } else {
+      const connectorH = Math.abs(y - axisY);
+      card.innerHTML = `
+        <div class="card-body">
+          <div class="card-year">${year} <span style="font-weight:normal;color:var(--muted)">${catNames[cat].slice(0,2)}</span></div>
+          <div class="card-title">${title}</div>
+        </div>
+        <div class="connector" style="bottom: 100%; height: ${connectorH}px; border-left: 1px dotted var(--${cat}); opacity: 0.4;"></div>
+        <div class="axis-dot" style="top: -${connectorH + 2.5}px; background: var(--${cat});"></div>
+      `;
+    }
+
+    const showTT = (e) => {
+      tooltip.className = `tooltip visible ${cat}`;
+      document.getElementById('ttCat').textContent = catNames[cat];
+      document.getElementById('ttYear').textContent = year + '年';
+      document.getElementById('ttTitle').textContent = title;
+      document.getElementById('ttDesc').textContent = desc;
+      moveTooltip(e);
+    };
+
+    card.addEventListener('mouseenter', showTT);
+    card.addEventListener('click', showTT);
+    card.addEventListener('mousemove', moveTooltip);
+    card.addEventListener('mouseleave', () => { tooltip.classList.remove('visible'); });
+
+    timeline.appendChild(card);
+    placed.push({ x: x, y: y });
+  });
+}
+
+function moveTooltip(e) {
+  let clientX = e.clientX || (e.touches && e.touches[0].clientX);
+  let clientY = e.clientY || (e.touches && e.touches[0].clientY);
+  if(!clientX) return;
+  const x = Math.min(clientX + 15, window.innerWidth - 340);
+  const y = Math.min(clientY + 15, window.innerHeight - 180);
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+
+// 延迟渲染以确保撑开容器
+setTimeout(() => {
+  const polEvents = window.historyEvents.filter(e => e[3] === 'pol').sort((a, b) => a[0] - b[0]);
+  const belowEvents = window.historyEvents.filter(e => e[3] !== 'pol').sort((a, b) => a[0] - b[0]);
+  placeEvents(polEvents, true);  
+  placeEvents(belowEvents, false); 
+}, 50);
+
+const filterBtns = document.querySelectorAll('.filter-btn');
+filterBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    filterBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const cat = btn.dataset.cat;
+    document.querySelectorAll('.event-card').forEach(card => {
+      if (cat === 'all' || card.dataset.cat === cat) {
+        card.classList.remove('hidden');
+      } else {
+        card.classList.add('hidden');
+      }
+    });
+  });
+});
+
+wrapper.addEventListener('wheel', (e) => {
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+    e.preventDefault();
+    wrapper.scrollLeft += e.deltaY * 1.2;
+  }
+}, { passive: false });
+
+let isDown = false, startX, scrollLeft;
+wrapper.addEventListener('mousedown', (e) => {
+  isDown = true; wrapper.style.cursor = 'grabbing';
+  startX = e.pageX - wrapper.offsetLeft; scrollLeft = wrapper.scrollLeft;
+});
+wrapper.addEventListener('mouseleave', () => { isDown = false; wrapper.style.cursor = 'grab'; });
+wrapper.addEventListener('mouseup', () => { isDown = false; wrapper.style.cursor = 'grab'; });
+wrapper.addEventListener('mousemove', (e) => {
+  if (!isDown) return; e.preventDefault();
+  const x = e.pageX - wrapper.offsetLeft;
+  wrapper.scrollLeft = scrollLeft - (x - startX) * 1.5;
+});
+
+let touchStartX = 0, touchScrollLeft = 0;
+wrapper.addEventListener('touchstart', (e) => {
+  touchStartX = e.touches[0].pageX; touchScrollLeft = wrapper.scrollLeft;
+}, { passive: true });
+wrapper.addEventListener('touchmove', (e) => {
+  const x = e.touches[0].pageX;
+  wrapper.scrollLeft = touchScrollLeft + (touchStartX - x) * 1.3;
+}, { passive: true });
+</script>
+</body>
+</html>
